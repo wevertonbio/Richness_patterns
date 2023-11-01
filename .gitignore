@@ -47,3 +47,6 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Best models
+Data/Models/Best_models/*.RDS
