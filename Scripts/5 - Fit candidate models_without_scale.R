@@ -13,7 +13,7 @@ library(ape)
 library(moranfast)
 
 ####FIT CANDIDATE MODELS####
-dir.create("Data/Models/Candidate_models", recursive = TRUE)
+dir.create("Data/Models/Candidate_models_without_scale", recursive = TRUE)
 #Import data
 my_f <- readRDS("Data/Variables/Formulas.RDS") #Formulas
 all_var <- rast("Data/Variables/Explanatory_Variables.tiff") #Explanatory Variables
@@ -45,7 +45,7 @@ names(all_data) <- sapply(all_data, function(x) {unique(x$lifeform)})
 pblapply(all_data, function(x){
   dt <- x
   #Normalize data
-  dt[names(all_var)] <- scale(dt[names(all_var)])
+  #dt[names(all_var)] <- scale(dt[names(all_var)])
   
   #### Run in parallel ####
   cl <- makeCluster(50)
@@ -70,6 +70,7 @@ pblapply(all_data, function(x){
       overdisp_i <- performance::check_overdispersion(m_i)
       disp_ratio_i <- overdisp_i$dispersion_ratio
       disp_p <- overdisp_i$p_value
+      
       #VIF
       vif_i <- try(performance::check_collinearity(m_i))
       highest_vif <- try(max(vif_i$VIF, na.rm = TRUE))
@@ -100,7 +101,7 @@ pblapply(all_data, function(x){
   #                  ".csv"),
   #           row.names = F)
   saveRDS(df_m,
-            paste0("Data/Models/Candidate_models/",
+            paste0("Data/Models/Candidate_models_without_scale/",
                    dt$lifeform[1], #Lifeform
                    ".RDS"))
   
