@@ -128,9 +128,6 @@ filter_quadratic_without_linear <- function(ff) {
   #Get variables
   f1 <- gsub("Richness ~ ", "", ff)
   f1 <- strsplit(f1, " \\+ ") %>% unlist()
-  #Remove spatial predictors from the list
-  f1 <- f1[!grepl("EV", f1)]
-  
   # Has quadratic?
   q <- grepl("\\^2)", ff)
   #If has quadratic, search for linear version
@@ -142,6 +139,7 @@ filter_quadratic_without_linear <- function(ff) {
     return(TRUE)
   }
 }
+
 # Filter
 my_f3 <- my_f2_spt[pbsapply(my_f2_spt, filter_quadratic_without_linear)]
 

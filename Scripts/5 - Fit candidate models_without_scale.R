@@ -13,7 +13,7 @@ library(ape)
 library(moranfast)
 
 ####FIT CANDIDATE MODELS####
-dir.create("Data/Models/Candidate_models", recursive = TRUE)
+dir.create("Data/Models/Candidate_models_without_scale", recursive = TRUE)
 #Import data
 my_f <- readRDS("Data/Variables/Formulas.RDS") #Formulas
 all_var <- rast("Data/Variables/Explanatory_Variables.tiff") #Explanatory Variables
@@ -45,7 +45,7 @@ names(all_data) <- sapply(all_data, function(x) {unique(x$lifeform)})
 pblapply(all_data, function(x){
   dt <- x
   #Normalize data
-  dt[names(all_var)] <- scale(dt[names(all_var)])
+  #dt[names(all_var)] <- scale(dt[names(all_var)])
   
   #### Run in parallel ####
   cl <- makeCluster(50)
@@ -100,7 +100,7 @@ pblapply(all_data, function(x){
   #                  ".csv"),
   #           row.names = F)
   saveRDS(df_m,
-            paste0("Data/Models/Candidate_models/",
+            paste0("Data/Models/Candidate_models_without_scale/",
                    dt$lifeform[1], #Lifeform
                    ".RDS"))
   

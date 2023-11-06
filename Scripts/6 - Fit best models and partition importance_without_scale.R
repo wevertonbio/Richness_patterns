@@ -9,9 +9,9 @@ library(hier.part)
 
 
 #Create directory to save data to plot
-dir.create("Data/Models/Partitioning")
-dir.create("Data/Models/Predictions")
-dir.create("Data/Models/Best_models")
+dir.create("Data/Models/Partitioning_without_scale")
+dir.create("Data/Models/Predictions_without_scale")
+dir.create("Data/Models/Best_models_without_scale")
 
 #Import data
 my_f <- readRDS("Data/Variables/Formulas.RDS")
@@ -39,13 +39,15 @@ all_data <- pblapply(lf_indices, function(i){
 names(all_data) <- sapply(all_data, function(x) {unique(x$lifeform)})
 
 #Import candidate models
-cm_l <- list.files("Data/Models/Candidate_models/", pattern = ".RDS",
+cm_l <- list.files("Data/Models/Candidate_models_without_scale/", pattern = ".RDS",
                    full.names = TRUE, recursive = FALSE)
 
 #Generate data to expand grid with NA values for variables that are not selected
 names_var <- names(all_var)
 names_var <- names_var[!grepl("EV", names_var)]
 
+#To test
+i <- cm_l[7]
 
 pblapply(cm_l, function(i){
   cm_i <- readRDS(i) #Read i data
@@ -55,8 +57,8 @@ pblapply(cm_l, function(i){
   #Select data
   d_i <- all_data[[lf_i]]
   
-  #Normalize data
-  d_i[names(all_var)] <- scale(d_i[names(all_var)])
+  # #Normalize data
+  # d_i[names(all_var)] <- scale(d_i[names(all_var)])
   
   # #Remove candidate models with EV1 and EV2 when there is only quadratic (weird curves)
   # all_formulas <- lapply(1:nrow(cm_i), function(x){
@@ -112,7 +114,7 @@ pblapply(cm_l, function(i){
       var_quadratica <- paste("I(", var, "^2)", sep = "")
       if (var_quadratica %in% vars) {
         return(paste(var, "+", var_quadratica))
-      }
+      } else {return(var)}
     }
     
     if(grepl("EV|Mid_domain|Topoi_het", var)) {
@@ -189,10 +191,10 @@ pblapply(cm_l, function(i){
   
   #Save results
   saveRDS(data_pm,
-            paste0("Data/Models/Predictions/", lf_i,".RDS"))
+            paste0("Data/Models/Predictions_without_scale/", lf_i,".RDS"))
   saveRDS(var_imp,
-            paste0("Data/Models/Partitioning/", lf_i,".RDS"))
+            paste0("Data/Models/Partitioning_without_scale/", lf_i,".RDS"))
   saveRDS(m_i,
-          paste0("Data/Models/Best_models/", lf_i, ".RDS"))
+          paste0("Data/Models/Best_models_without_scale/", lf_i, ".RDS"))
   
 })
