@@ -1,4 +1,5 @@
 #### Fit best models and partitioning the variance ####
+#We didn't scale the variables. See: https://stackoverflow.com/questions/25481331/how-to-use-scale-in-logistic-regression-correctly
 library(MASS)
 library(dplyr)
 library(pbapply)
@@ -7,6 +8,8 @@ library(sjPlot)
 library(performance)
 library(hier.part)
 
+#Com MID ou sem MID?
+#Com MID fica mais legal, mas é uma hipótese polêmica :(
 
 #Create directory to save data to plot
 dir.create("Data/Models/Partitioning")
@@ -46,36 +49,42 @@ cm_l <- list.files("Data/Models/Candidate_models/", pattern = ".RDS",
 names_var <- names(all_var)
 names_var <- names_var[!grepl("EV", names_var)]
 
+#To test
+i <- cm_l[7]
+i
 
 pblapply(cm_l, function(i){
   cm_i <- readRDS(i) #Read i data
   #Get lifeform and endemism
   lf_i <- unique(cm_i$lifeForm)
-
+  
   #Select data
   d_i <- all_data[[lf_i]]
   
-  #Normalize data
-  d_i[names(all_var)] <- scale(d_i[names(all_var)])
+  # #Normalize data
+  # d_i[names(all_var)] <- scale(d_i[names(all_var)])
   
-  # #Remove candidate models with EV1 and EV2 when there is only quadratic (weird curves)
+  # #Remove candidate models with EV1 and Ev2 when there is only quadratic (weird curves)
   # all_formulas <- lapply(1:nrow(cm_i), function(x){
   #   gsub("Richness ~ ", "", cm_i$Formula[x]) %>% strsplit(., " \\+ ") %>% unlist()
   #   })
-  # #Has EV2?
+  # #Has Ev2?
   # 
   # f_i <- gsub("Richness ~ ", "", cm_i$Formula[1]) %>%
   #   strsplit(., " \\+ ") %>% unlist()
-  # if("EV2" %in% f_i) {
+  # if("Ev2" %in% f_i) {
   #   
   # }
   
   
-  
-  
   #Select best model
   bm <- cm_i %>%
-    #filter(Highest_VIF <= 10) %>% #VIF < 10
+    #Remove Bio11 - Autocorrelation with Bio06
+    filter(!grepl("Bio11", Formula)) %>% 
+    #Remove MID
+    #filter(!grepl("Mid_domain", Formula)) %>% 
+    #filter(!grepl("Mid_domain|\\^2", Formula)) %>% 
+    #filter(Highest_VIF <= 20) %>% #VIF < 10
     filter(p_dispersion_ration > 0.05) %>% #Dispersion ratio < 0.05
     #calculate delta AIC
     mutate(dAIC = AIC - min(AIC, na.rm = T), .after = AIC) %>% #Recalculate AIC
@@ -112,11 +121,11 @@ pblapply(cm_l, function(i){
       var_quadratica <- paste("I(", var, "^2)", sep = "")
       if (var_quadratica %in% vars) {
         return(paste(var, "+", var_quadratica))
-      }
+      } else {return(var)}
     }
     
     if(grepl("EV|Mid_domain|Topoi_het", var)) {
-    return(var) }
+      return(var) }
   }
   
   # Appply function to group variable
@@ -189,9 +198,9 @@ pblapply(cm_l, function(i){
   
   #Save results
   saveRDS(data_pm,
-            paste0("Data/Models/Predictions/", lf_i,".RDS"))
+          paste0("Data/Models/Predictions/", lf_i,".RDS"))
   saveRDS(var_imp,
-            paste0("Data/Models/Partitioning/", lf_i,".RDS"))
+          paste0("Data/Models/Partitioning/", lf_i,".RDS"))
   saveRDS(m_i,
           paste0("Data/Models/Best_models/", lf_i, ".RDS"))
   

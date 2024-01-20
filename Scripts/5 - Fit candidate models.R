@@ -8,7 +8,6 @@ library(pbapply)
 library(parallel)
 library(MASS)
 library(performance)
-library(ape)
 #Calculare I moran
 library(moranfast)
 
@@ -40,19 +39,20 @@ all_data <- pblapply(lf_indices, function(i){
 names(all_data) <- sapply(all_data, function(x) {unique(x$lifeform)})
 
 #Run models
+#Test model
+x <- all_data[[2]]
 
 #Run models by lifeform
 pblapply(all_data, function(x){
   dt <- x
   #Normalize data
-  dt[names(all_var)] <- scale(dt[names(all_var)])
+  #dt[names(all_var)] <- scale(dt[names(all_var)])
   
   #### Run in parallel ####
-  cl <- makeCluster(50)
+  cl <- makeCluster(9)
   clusterExport(cl, varlist= c("my_f", "dt"), #Send objects to nodes
                 envir=environment())
   clusterEvalQ(cl, {  #Send packages to nodes
-    library(ape)
     library(MASS) #To fit negative binomial
     library(performance) #To check performance
     library(moranfast) #To calculate moran index
@@ -70,9 +70,10 @@ pblapply(all_data, function(x){
       overdisp_i <- performance::check_overdispersion(m_i)
       disp_ratio_i <- overdisp_i$dispersion_ratio
       disp_p <- overdisp_i$p_value
-      #VIF
-      vif_i <- try(performance::check_collinearity(m_i))
-      highest_vif <- try(max(vif_i$VIF, na.rm = TRUE))
+      
+      # #VIF - don't need to calculate with quadratic terms
+      # vif_i <- try(performance::check_collinearity(m_i))
+      # highest_vif <- try(max(vif_i$VIF, na.rm = TRUE))
       #RMSE
       rmse_i <- performance::rmse(m_i)
       
@@ -84,7 +85,7 @@ pblapply(all_data, function(x){
                        Moran_I = moranI,
                        Dispersion_ratio = disp_ratio_i,
                        p_dispersion_ration = disp_p,
-                       Highest_VIF = highest_vif,
+                       #Highest_VIF = highest_vif,
                        rmse = rmse_i)
       return(df)
       gc()

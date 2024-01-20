@@ -3,31 +3,28 @@
 library(enmpa)
 library(terra)
 library(dplyr)
-library(sjPlot)
 library(pbapply)
-library(parallel)
-library(MASS)
-library(performance)
-library(ape)
+
+
 
 ####PREPARE VARIABLES####
 dir.create("Richness_Models")
 #Import AF extent
-af <- vect("Vetores/AF_dissolved.shp")
+af <- vect("https://github.com/wevertonbio/Get_and_Filter_Points/raw/main/Vectors/AF_dissolved..gpkg")
 
 ####Get variables####
-var <- list.files("Current_Neotropic/", pattern = ".tif", full.names = T) %>%
+var <- list.files("C:/Users/wever/OneDrive - University of Kansas/GitHub/KU_Models/Current_Neotropic", pattern = ".tif", full.names = T) %>%
   rast()
 var <- var[[c(#"Bio01", "Bio12",
-  "Bio07", "Bio15", "Bio02", #Stability
-  "Bio06", "Bio14")]]
+  "Bio02", "Bio04", "Bio07", "Bio15",  #Seasonality
+  "Bio06", "Bio11", "Bio17", "Bio14")]] #Tolerance
 var <- crop(var, af, mask = TRUE)
 #Aggregate
 f_ag <- round(0.08333333/res(var)[1],0)
 var <- terra::aggregate(var, fact = f_ag, fun = mean)
 res(var)
 #Others variables
-ol_var <- list.files("Others_variables/", pattern = ".tif", full.names = T)
+ol_var <- list.files("C:/Users/wever/OneDrive - University of Kansas/GitHub/KU_Models/Others_variables", pattern = ".tif", full.names = T)
 o_var <- pblapply(seq_along(ol_var), function(i){
   o_i <- rast(ol_var[i])
   print(names(o_i))
@@ -39,11 +36,14 @@ o_var <- rast(o_var)
 names(o_var)
 #All variables
 all_var <- c(var, o_var)
+#Get correlation
+df_cor <- as.data.frame(all_var) %>% na.omit() %>% cor()
+
 #Subset and reorder variables
 names(all_var) %>% dput()
-all_var <- all_var[[c("Aridity", #Energy 
-                      "Bio06", "Bio14", #Tolerance
-                      "Bio02", "Bio07", "Bio15", #Seasonality
+all_var <- all_var[[c("Aridity", "PET", #Energy 
+                      "Bio06", "Bio11", "Bio14", "Bio17", #Tolerance
+                      "Bio02", "Bio04", "Bio07", "Bio15", #Seasonality
                       "Mid_domain", #Mid Domain
                       "Prec_stab", "Temp_stab", #Stability
                       "Topoi_het",#Topographic heterogeneity
@@ -52,7 +52,7 @@ all_var <- all_var[[c("Aridity", #Energy
 writeRaster(all_var, "Data/Variables/Explanatory_Variables.tiff", overwrite = TRUE)
 
 ####See correlation between variables####
-df_cor <- as.data.frame(all_var) %>% na.omit() %>% scale() %>% cor()
+df_cor <- as.data.frame(all_var) %>% na.omit() %>% cor()
 # correlation_finder(cor_mat = df_cor ,threshold = 0.7,verbose = T)
 #Save variables correlation
 write.csv(df_cor, "Data/Variables/Correlation_variables.csv")
@@ -109,19 +109,25 @@ cor_groups <- function(cor_mat, th = 0.7){
 var_comb <- cor_groups(df_cor, th = 0.7)
 #Save variables combination
 saveRDS(var_comb, "Data/Variables/var_comb.RDS")
+gc()
+
+####Import objects if necessary####
+var_comb <- readRDS("Data/Variables/var_comb.RDS")
 
 #Get formulas: at least 4 variables
 my_f <- pblapply(seq_along(var_comb), function(i){
   ind_i <- var_comb[[i]]
   f_i <- enmpa::get_formulas(dependent = "Richness",
                              independent = ind_i,
-                             type = c("lq"), minvar = 4)
+                             type = c("lq"), minvar = 4, mode = "intense")
   return(f_i)
 })
 my_f2 <- unique(unlist(my_f))
+my_f2 %>% as.data.frame() %>% View()
 
 #Remove models without any spatial variable
 my_f2_spt <- my_f2[grepl("EV", my_f2)]
+my_f2_spt %>% as.data.frame() %>% View()
 
 # Drop off formulas with quadratic predictor without its linear function
 filter_quadratic_without_linear <- function(ff) {
@@ -142,9 +148,12 @@ filter_quadratic_without_linear <- function(ff) {
 
 # Filter
 my_f3 <- my_f2_spt[pbsapply(my_f2_spt, filter_quadratic_without_linear)]
+my_f3 %>% as.data.frame() %>% View()
 
 #Filter formulas: remove quadratic models with Mid_domain and Topoi_het
 my_f4 <- my_f3[which(!grepl("Mid_domain\\^2|Topo_het\\^2|Topoi_het\\^2", my_f3))]
+#See formulas
+my_f4 %>% as.data.frame() %>% View()
 
 #Save formulas
 saveRDS(my_f4, "Data/Variables/Formulas.RDS")
