@@ -50,4 +50,4 @@ rsconnect/
 
 # Best models
 /Data/Models/Best_models/*.RDS
-/Data/Models/Best_models_without_scale
+/Data/Models/Best_models/
