@@ -4,14 +4,26 @@ library(data.table)
 library(terra)
 library(GPUmatrix)
 
+#Create directory to save results
+dir.create("Data/PAM_indices/")
+
 #Load species information
-spinfo <- read.csv("Data/SpeciesData.csv")
+spinfo <- fread("Data/SpeciesData.gz")
 spinfo$species <- gsub(" ", "_", spinfo$species)
 
 #Import PAM
-PAM <- readRDS("Data/PAM.RDS")
+PAM <- fread("Data/PAM.gzip")
 
-####Get PAM of all species####
+#Check species
+spp_pam <- PAM %>% dplyr::select(-x, -y) %>% colnames()
+spp_pam_in <- intersect(spp_pam, spinfo$species)
+setdiff(spp_pam, spinfo$species) #Should be 0
+
+# #Remove species
+# PAM2 <- PAM %>% dplyr::select(x, y, spp_pam_in)
+# fwrite(PAM2, "Data/PAM.gzip", row.names = FALSE, compress = "gzip")
+
+#Remove coordinates
 pam_all <- PAM %>% dplyr::select(-x, -y) %>% as.matrix()
 
 ####Import function####
@@ -31,6 +43,7 @@ saveRDS(ind_all, "Data/PAM_indices/Indices_All.rds")
 rm(ind_all)
 
 #Calculate PAM indices by lifeform
+table(spinfo$lifeForm)
 #Get lifeforms
 lf <- unique(spinfo$lifeForm)
 lf

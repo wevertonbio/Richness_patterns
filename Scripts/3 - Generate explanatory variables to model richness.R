@@ -6,9 +6,9 @@ library(dplyr)
 library(mapview)
 
 #Load atlantic forest limits
-af <- vect("C:/Users/wever/OneDrive - University of Kansas/GitHub/KU_Models/Vetores/Atlantic_Forest_Shapefile/AF_dissolved.shp")
+af <- vect("https://github.com/wevertonbio/spatial_files/raw/main/Data/AF_limite_integrador.gpkg")
 #Buffer of 50 km
-af <- buffer(af, width = 50*1000)
+af <- buffer(af, width = 10*1000)
 
 #Calculate topographic heterogeneity based on altitude
 alt <- rast("Current_Neotropic/Elevation_1km/elevation_1KMmd_GMTEDmd.tif")
@@ -42,7 +42,8 @@ plot(range_alt)
 
 
 #Calculate topographic heterogeneity based on standard deviation of topoindex
-topoi <- rast("C:/Users/wever/Downloads/Compressed/tpi_1KMsd_GMTEDmd.tif")
+#Download from ENVIREM
+topoi <- rast("https://data.earthenv.org/topography/tpi_1KMmd_GMTEDmd.tif")
 topoi_af <- crop(topoi, af, mask = TRUE, touch = TRUE)
 plot(topoi_af)
 #Aggregate to 5 arc-min and sum sd
@@ -144,8 +145,8 @@ writeRaster(Prec_stab, "Others_variables/Precipitation_Stability.tiff",
 
 ####Aridity and PET####
 #Downloaded from ENVIREM
-ari <- rast("C:/Users/wever/Downloads/Compressed/SAmerica_current_5arcmin_geotiff/current_5arcmin_aridityIndexThornthwaite.tif")
-pet <- rast("C:/Users/wever/Downloads/Compressed/SAmerica_current_5arcmin_geotiff/current_5arcmin_annualPET.tif")
+ari <- rast("C:/Users/wever/Downloads/SAmerica_current_5arcmin_geotiff/current_5arcmin_aridityIndexThornthwaite.tif")
+pet <- rast("C:/Users/wever/Downloads/SAmerica_current_5arcmin_geotiff/current_5arcmin_annualPET.tif")
 aripet <- c(ari, pet)
 ap_af <- crop(aripet, af, mask = T)
 plot(ap_af)
@@ -154,10 +155,10 @@ names(ap_af) <- c("PET", "Aridity")
 #Resample
 ap_af <- resample(ap_af, agg_het)
 #Save
-writeRaster(ap_af, filename = paste0("Others_variables/", names(ap_af), ".tiff"))
+writeRaster(ap_af, "Others_variables/PET_Aridity.tiff")
 
 ####MID-DOMAIN####
-any_raster <- rast("Others_variables/PET.tiff")
+any_raster <- rast("Others_variables/Precipitation_Stability.tiff")
 df_r <- as.data.frame(any_raster, xy = TRUE)
 centroid_y <- df_r$y %>% median()
 df_r$Distance_centroide <- abs(df_r$y - centroid_y)
@@ -172,38 +173,14 @@ writeRaster(r_mid, "Others_variables/Mid_domain.tiff", overwrite = TRUE)
 library(terra)
 library(pbapply)
 library(dplyr)
-####Get variables####
-af <- vect("Vetores/AF_dissolved.shp")
-var <- list.files("Current_Neotropic/", pattern = ".tif", full.names = T) %>%
-  rast()
-var <- var[[c(#"Bio01", "Bio12",
-  "Bio07", "Bio15", "Bio11", "Bio17")]]
-var <- crop(var, af, mask = TRUE)
-#Aggregate
-f_ag <- round(0.08333333/res(var)[1],0)
-var <- terra::aggregate(var, fact = f_ag, FUN = mean)
-res(var)
-
-
-# # checking for spatial autocorrelation
-all_data <- as.data.frame(var$Bio07, xy = TRUE)
-# ## matrix of distnaces
-cords <- all_data[, c("x", "y")] %>% as.matrix()
-####With terra####
-mat_dis2 <- dist(cords) # object type distance to be used after
-
-md2 <- pbsapply(terra::distance(cords, lonlat = T), as.numeric) #distances in meters REPLACE WITH FUNCTION FROM TERRA distance 
-md2 <- md2[!is.na(md2)] # erasing NAs
-md2 <- md2[md2 != 0] # erasing zeros
-
-## truncation of the matrix distance of truncation (1000 km ~ ) truncation = D x 4
-tdist <- 1000000 # truncation distance
-md2 <- ifelse(md2 > tdist, md2 * 4, md2) # truncating values bigger than 1000 km
-
-mat_dis2[] <- md2 # replacing values in object type dist
+#Install older version of bigmds package
+#remotes::install_version("bigmds", version = "2.0.1")
+library(bigmds)
+#Get coordinates
+coords <- as.data.frame(r_mid, xy = TRUE) %>% dplyr::select(x, y) %>% as.matrix()
 
 ## calculating eigenvectors via principal coordinate analysis (K = numero de puntos - 1)
-pcoa2 <- cmdscale(mat_dis2, k = 1000, eig = TRUE)
+pcoa2 <- fast_mds(coords, l = 200, s_points = 5 * 10, r = 10, n_cores = 1)
 
 eigs2 <- pcoa2$eig # all eigenvalues
 pos_eigs2 <- 1:length(eigs2[eigs2 > 0]) # position of positive eigenvalues
@@ -217,30 +194,35 @@ plot(1:10, eigs2[1:10] / max(eigs2), type = "l", col = "black", las = 1, xlab = 
 abline(h = 0, col = "grey75", lwd = 1, lty = 2)
 title(xlab = "Rank of eigenvalues", ylab = "", cex.lab = 1.2, line = 3)
 title(xlab = "", ylab = "Eigenvalues (normalized)", cex.lab = 1.2, line = 3.3)
-abline(v = 3, col = "red", lwd = 1, lty = 2)
+abline(v = 2, col = "red", lwd = 1, lty = 2)
 
-
+#Get eingevectors
 E1_2 <- eigens2[, 1]
 E2_2 <- eigens2[, 2]
 E3_2 <- eigens2[, 3]
 #Rasterize eingevectors
-resolution <- 0.08333333333
-extension <- ext(var)
+resolution <- res(r_mid)
+extension <- terra::ext(r_mid)
 r_base <- rast(resolution = resolution, extent = extension)
-r_res_1 <- rasterize(cords,
+r_res_1 <- rasterize(coords,
                      r_base,
                      values = E1_2)
-r_res_2 <- rasterize(cords,
+plot(r_res_1) #Latitudinal variation
+r_res_2 <- rasterize(coords,
                      r_base,
                      values = E2_2)
-r_res_3 <- rasterize(cords,
+plot(r_res_2) #Longitudinal variation
+r_res_3 <- rasterize(coords,
                      r_base,
                      values = E3_2)
-r_res <- c(r_res_1, r_res_2, r_res_3)
-names(r_res) <- c("EV1", "EV2", "EV3")
-plot(r_res, col = pals::brewer.divseq(9), main = names(r_res))
+plot(r_res_3) #??????variation
+#Save variable sin object
+spatial_variation <- c(r_res_1, r_res_2)
+names(spatial_variation) <- c("latitudinal_eingevector", 
+                              "longitudinal_eingevector")
+plot(spatial_variation)
 #save as environmental variables
-writeRaster(r_res, "Others_variables/Spatial_eingenvectors.tiff",
+writeRaster(spatial_variation, "Others_variables/Spatial_eingenvectors.tiff",
             overwrite = TRUE)
 
 

@@ -4,6 +4,7 @@ library(enmpa)
 library(terra)
 library(dplyr)
 library(pbapply)
+library(RcppAlgos)
 
 
 
@@ -11,15 +12,16 @@ library(pbapply)
 dir.create("Richness_Models")
 #Load atlantic forest limits
 af <- vect("https://github.com/wevertonbio/spatial_files/raw/main/Data/AF_limite_integrador.gpkg")
-#Buffer of 50 km
-af <- buffer(af, width = 50*1000)
+#Buffer of 10km
+af <- buffer(af, width = 10*1000)
+plot(af)
 
 
 ####Get variables####
 var <- list.files("Current_Neotropic", pattern = ".tif", full.names = T) %>%
   rast()
 var <- var[[c(#"Bio01", "Bio12",
-  "Bio02", "Bio04", "Bio07", "Bio15",  #Seasonality
+  "Bio02", "Bio07", "Bio15",  #Seasonality
   "Bio06", "Bio11", "Bio17", "Bio14")]] #Tolerance
 var <- crop(var, af, mask = TRUE)
 #Aggregate
@@ -44,97 +46,64 @@ names(o_var) <- c("Mid_domain", "PET", "Aridity", "Prec_stab", "Lat_EV",
 
 #All variables
 all_var <- c(var, o_var)
+plot(all_var)
 #Get correlation
 df_cor <- as.data.frame(all_var) %>% na.omit() %>% cor()
 
 #Subset and reorder variables
 names(all_var) %>% dput()
 all_var <- all_var[[c("Aridity", "PET", #Energy 
-                      "Bio06", "Bio11", "Bio14", "Bio17", #Tolerance
-                      "Bio02", "Bio04", "Bio07", "Bio15", #Seasonality
+                      "Bio06", "Bio14", #Tolerance
+                      "Bio02", "Bio07", "Bio15", #Seasonality
                       "Mid_domain", #Mid Domain
                       "Prec_stab", "Temp_stab", #Stability
-                      "Topoi_het",#Topographic heterogeneity
+                      "Topo_het",#Topographic heterogeneity
                       "Lat_EV", "Long_EV")]] #Spatial
 #Save variables
 writeRaster(all_var, "Data/Variables/Explanatory_Variables.tiff", overwrite = TRUE)
+all_var <- terra::rast("Data/Variables/Explanatory_Variables.tiff")
 
 ####See correlation between variables####
 df_cor <- as.data.frame(all_var) %>% na.omit() %>% cor()
-# correlation_finder(cor_mat = df_cor ,threshold = 0.7,verbose = T)
+# z <- ntbox::correlation_finder(cor_mat = df_cor ,threshold = 0.7,verbose = T)
 #Save variables correlation
 write.csv(df_cor, "Data/Variables/Correlation_variables.csv")
 
 #Create combinations of variables without correlation
-#Identify correlated variables
-cor_groups <- function(cor_mat, th = 0.7){
-  var_names <- colnames(cor_mat)
-  cor_mat<- abs(cor_mat)
-  diag(cor_mat) <- 0
-  cor_var <- cor_mat > th
-  cor_var <- apply(cor_var, 2, function(x) colnames(cor_mat)[x])
-  if (length(cor_var) == 0) {
-    cor_var <- "No pair of variables reached the specified correlation threshold."
-    var_list <- var_names
-  } else{
-    cor_var <- Filter(function(x) length(x) > 0, cor_var)
-    #Get variables with correlation
-    cor_names <- names(cor_var)
-    #Get all combinations of order of variables
-    l_var <- gtools::permutations(n = length(cor_names), r = length(cor_names),
-                                  v = cor_names,
-                                  repeats.allowed = FALSE)
-    
-    # Save in list
-    l_var <- lapply(1:nrow(l_var), function(i){
-      q_i <- as.character(unlist(l_var[i,]))
-      return(q_i)
-    })
-    
-    #Iterate on minha_lista
-    var_list <- pblapply(seq_along(l_var), function(x){
-      l_x <- l_var[[x]]
-      the_var <- var_names
-      # Inicialize o índice da iteração
-      i <- 1
-      while(i <= length(l_x)) {
-        f_i <- l_x[[i]]
-        if(f_i %in% the_var) {
-          cor_var_i <- cor_var[f_i][[1]]
-          the_var <- the_var[!(the_var %in% cor_var_i)] } else {
-            the_var <- the_var
-          }
-        # Avance para a próxima iteração
-        i <- i + 1
-      }
-      return(the_var)
-    })
-    return(unique(var_list))
-  }
-}
+#Get variables (remove spatial predictors)
+v <- names(all_var)
+v
 
-#Get var comb
-var_comb <- cor_groups(df_cor, th = 0.7)
-#Save variables combination
-saveRDS(var_comb, "Data/Variables/var_comb.RDS")
-gc()
-
-####Import objects if necessary####
-var_comb <- readRDS("Data/Variables/var_comb.RDS")
+all_comb <- pbsapply(v, function(x){
+  c_x <- df_cor %>% as.data.frame() %>% dplyr::select(all_of(x)) %>% pull %>% abs()
+  to_rm <- which(c_x > 0.7)
+  to_keep <- c(x, row.names(df_cor[-to_rm,]))
+  to_keep <- to_keep[to_keep %in% v]
+  #Append spatial eingevectors
+  v_x <- sort(to_keep)
+  return(v_x)
+})
 
 #Get formulas: at least 4 variables
-my_f <- pblapply(seq_along(var_comb), function(i){
-  ind_i <- var_comb[[i]]
+my_f <- pblapply(seq_along(all_comb), function(i){
+  ind_i <- all_comb[[i]]
   f_i <- enmpa::get_formulas(dependent = "Richness",
                              independent = ind_i,
-                             type = c("lq"), minvar = 4, mode = "intense")
-  return(f_i)
+                             type = "lq", minvar = 4,
+                             mode = "moderate")
+  #Convert to formulas
+  f_i <- sapply(f_i, as.formula)
+  
+  #Make sure there is at least 4 variables
+  f_i <- f_i[sapply(f_i, function(x) length(attr(terms(x), "term.labels")) >= 4)]
+
+  return(as.character(f_i))
 })
 my_f2 <- unique(unlist(my_f))
 my_f2 %>% as.data.frame() %>% View()
 
 #Remove models without any spatial variable
-my_f2_spt <- my_f2[grepl("EV", my_f2)]
+my_f2_spt <- my_f2[grepl("_EV", my_f2)]
 my_f2_spt %>% as.data.frame() %>% View()
 
 # Drop off formulas with quadratic predictor without its linear function
@@ -158,8 +127,8 @@ filter_quadratic_without_linear <- function(ff) {
 my_f3 <- my_f2_spt[pbsapply(my_f2_spt, filter_quadratic_without_linear)]
 my_f3 %>% as.data.frame() %>% View()
 
-#Filter formulas: remove quadratic models with Mid_domain and Topoi_het
-my_f4 <- my_f3[which(!grepl("Mid_domain\\^2|Topo_het\\^2|Topoi_het\\^2", my_f3))]
+#Filter formulas: remove quadratic models with Mid_domain, Topo_het and Lat
+my_f4 <- my_f3[which(!grepl("Mid_domain\\^2|Topo_het\\^2|Lat_EV\\^2", my_f3))]
 #See formulas
 my_f4 %>% as.data.frame() %>% View()
 

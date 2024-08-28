@@ -22,6 +22,13 @@ my_var <- names(all_var) #Get names of variables
 lf_indices <- list.files("Data/PAM_indices/", full.names = TRUE)
 lf_indices <- pblapply(lf_indices, readRDS)
 
+#Plot rasters to check
+rich <- rast(pblapply(lf_indices, function(x){
+  r_x <- rasterize(x = x$xy, y = all_var, values = x$Richness, fun = "mean",
+                   background = 0)
+}))
+plot(rich[[1]])
+
 #Extract values of environmental variables 
 all_data <- pblapply(lf_indices, function(i){
   lf_i <- i
@@ -40,16 +47,17 @@ names(all_data) <- sapply(all_data, function(x) {unique(x$lifeform)})
 
 #Run models
 #Test model
-x <- all_data[[2]]
+x <- all_data[[8]]
 
 #Run models by lifeform
 pblapply(all_data, function(x){
   dt <- x
+  message("Fitting models for ", unique(dt$lifeform))
   #Normalize data
   #dt[names(all_var)] <- scale(dt[names(all_var)])
   
   #### Run in parallel ####
-  cl <- makeCluster(9)
+  cl <- makeCluster(6)
   clusterExport(cl, varlist= c("my_f", "dt"), #Send objects to nodes
                 envir=environment())
   clusterEvalQ(cl, {  #Send packages to nodes
@@ -59,11 +67,14 @@ pblapply(all_data, function(x){
   })
   all_m <- pblapply(seq_along(my_f), function(i){
     tryCatch({
-      m_i <- try(glm.nb(formula = my_f[i],
+      #Test formula
+ 
+      m_i <- try(glm.nb(formula = fi,
                         data = dt), silent = T)
+      plot_model(m_i, type = "pred")
       
       # #Calculate imoran index on residuals
-      moranI <- moranfast(m_i$residuals, dt$x, dt$y)$observed
+      moranI <- moranfast(m_i$residuals, dt$x, dt$y)
       
       #Calculate performance
       #Overdispersion - Must be > 0.05
@@ -82,7 +93,8 @@ pblapply(all_data, function(x){
                        Formula = my_f[i],
                        AIC = m_i$aic,
                        loglik = m_i$twologlik,
-                       Moran_I = moranI,
+                       Moran_I_obs = moranI$observed,
+                       Moran_I_p = moranI$p.value,
                        Dispersion_ratio = disp_ratio_i,
                        p_dispersion_ration = disp_p,
                        #Highest_VIF = highest_vif,
@@ -101,11 +113,9 @@ pblapply(all_data, function(x){
   #                  ".csv"),
   #           row.names = F)
   saveRDS(df_m,
-            paste0("Data/Models/Candidate_models/",
-                   dt$lifeform[1], #Lifeform
-                   ".RDS"))
+          paste0("Data/Models/Candidate_models/",
+                 dt$lifeform[1], #Lifeform
+                 ".RDS"))
   
   stopCluster(cl)
 }) #End of looping
-    
-
