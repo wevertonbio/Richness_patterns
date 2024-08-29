@@ -49,12 +49,18 @@ all_var <- c(var, o_var)
 plot(all_var)
 #Get correlation
 df_cor <- as.data.frame(all_var) %>% na.omit() %>% cor()
+#Save variables correlation
+write.csv(df_cor, "Data/Variables/Correlation_variables.csv")
+#Remove some variables with high correlation
 
 #Subset and reorder variables
 names(all_var) %>% dput()
-all_var <- all_var[[c("Aridity", "PET", #Energy 
-                      "Bio06", "Bio14", #Tolerance
-                      "Bio02", "Bio07", "Bio15", #Seasonality
+all_var <- all_var[[c("Aridity",  #Energy 
+                      #"PET", #Remove PET because it has high correlation with Bio15
+                      "Bio06",  #Tolerance
+                      #"Bio14", #Remove Bio14 because it has high correlation with Bio15
+                      "Bio02", "Bio15", #Seasonality
+                      #"Bio07", #Remove Bio07 because it has high correlation with Bio02 and Bio06
                       "Mid_domain", #Mid Domain
                       "Prec_stab", "Temp_stab", #Stability
                       "Topo_het",#Topographic heterogeneity
@@ -63,48 +69,18 @@ all_var <- all_var[[c("Aridity", "PET", #Energy
 writeRaster(all_var, "Data/Variables/Explanatory_Variables.tiff", overwrite = TRUE)
 all_var <- terra::rast("Data/Variables/Explanatory_Variables.tiff")
 
-####See correlation between variables####
-df_cor <- as.data.frame(all_var) %>% na.omit() %>% cor()
-# z <- ntbox::correlation_finder(cor_mat = df_cor ,threshold = 0.7,verbose = T)
-#Save variables correlation
-write.csv(df_cor, "Data/Variables/Correlation_variables.csv")
-
-#Create combinations of variables without correlation
-#Get variables (remove spatial predictors)
-v <- names(all_var)
-v
-
-all_comb <- pbsapply(v, function(x){
-  c_x <- df_cor %>% as.data.frame() %>% dplyr::select(all_of(x)) %>% pull %>% abs()
-  to_rm <- which(c_x > 0.7)
-  to_keep <- c(x, row.names(df_cor[-to_rm,]))
-  to_keep <- to_keep[to_keep %in% v]
-  #Append spatial eingevectors
-  v_x <- sort(to_keep)
-  return(v_x)
-})
-
-#Get formulas: at least 4 variables
-my_f <- pblapply(seq_along(all_comb), function(i){
-  ind_i <- all_comb[[i]]
-  f_i <- enmpa::get_formulas(dependent = "Richness",
-                             independent = ind_i,
-                             type = "lq", minvar = 4,
-                             mode = "moderate")
-  #Convert to formulas
-  f_i <- sapply(f_i, as.formula)
-  
-  #Make sure there is at least 4 variables
-  f_i <- f_i[sapply(f_i, function(x) length(attr(terms(x), "term.labels")) >= 4)]
-
-  return(as.character(f_i))
-})
-my_f2 <- unique(unlist(my_f))
-my_f2 %>% as.data.frame() %>% View()
+#### Get formulas ####
+z <- enmpa::get_formulas(dependent = "Richness",
+                         independent = names(all_var),
+                         type = "lq",
+                         minvar = 5, #Minimum of 5 variables
+                         mode = "intensive")
+length(z)
+head(z)
 
 #Remove models without any spatial variable
-my_f2_spt <- my_f2[grepl("_EV", my_f2)]
-my_f2_spt %>% as.data.frame() %>% View()
+my_f<- z[grepl("_EV", z)]
+my_f %>% as.data.frame() %>% View()
 
 # Drop off formulas with quadratic predictor without its linear function
 filter_quadratic_without_linear <- function(ff) {
@@ -124,15 +100,15 @@ filter_quadratic_without_linear <- function(ff) {
 }
 
 # Filter
-my_f3 <- my_f2_spt[pbsapply(my_f2_spt, filter_quadratic_without_linear)]
+my_f2 <- my_f[pbsapply(my_f, filter_quadratic_without_linear)]
+my_f2 %>% as.data.frame() %>% View()
+
+#Filter formulas: remove quadratic models with Mid_domain^2, Topo_het^2 and Lat^2
+my_f3 <- my_f2[which(!grepl("Mid_domain\\^2|Topo_het\\^2|Lat_EV\\^2", my_f2))]
+#See formulas
 my_f3 %>% as.data.frame() %>% View()
 
-#Filter formulas: remove quadratic models with Mid_domain, Topo_het and Lat
-my_f4 <- my_f3[which(!grepl("Mid_domain\\^2|Topo_het\\^2|Lat_EV\\^2", my_f3))]
-#See formulas
-my_f4 %>% as.data.frame() %>% View()
-
 #Save formulas
-saveRDS(my_f4, "Data/Variables/Formulas.RDS")
+saveRDS(my_f3, "Data/Variables/Formulas.RDS")
 
 

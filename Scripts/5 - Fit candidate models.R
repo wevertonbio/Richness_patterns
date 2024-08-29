@@ -47,7 +47,7 @@ names(all_data) <- sapply(all_data, function(x) {unique(x$lifeform)})
 
 #Run models
 #Test model
-x <- all_data[[8]]
+x <- all_data[[10]]
 
 #Run models by lifeform
 pblapply(all_data, function(x){
@@ -57,7 +57,7 @@ pblapply(all_data, function(x){
   #dt[names(all_var)] <- scale(dt[names(all_var)])
   
   #### Run in parallel ####
-  cl <- makeCluster(6)
+  cl <- makeCluster(8)
   clusterExport(cl, varlist= c("my_f", "dt"), #Send objects to nodes
                 envir=environment())
   clusterEvalQ(cl, {  #Send packages to nodes
@@ -69,9 +69,9 @@ pblapply(all_data, function(x){
     tryCatch({
       #Test formula
  
-      m_i <- try(glm.nb(formula = fi,
+      m_i <- try(glm.nb(formula = my_f[i],
                         data = dt), silent = T)
-      plot_model(m_i, type = "pred")
+      #plot_model(m_i, type = "pred")
       
       # #Calculate imoran index on residuals
       moranI <- moranfast(m_i$residuals, dt$x, dt$y)
