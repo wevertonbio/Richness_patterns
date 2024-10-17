@@ -1,20 +1,23 @@
+library(dplyr)
+library(data.table)
+library(pbapply)
 #Get informations
-pam <- readRDS("Data/PAM.RDS")
+pam <- fread("Data/PAM.gzip")
 spp <- pam %>% dplyr::select(-x, -y) %>% colnames()
 head(spp)
 length(spp)
 #Get information of species
-sp.info <- read.csv("Data/SpeciesData.csv")
-head(sp.info$species)
-sp.info$species <- gsub(" ", "_", sp.info$species)
-sp.info <- sp.info %>% filter(species %in% spp)
+spdata <- fread("Data/SpeciesData.gz")
+unique(spdata$species) %>% length()
+head(spdata$species)
+spdata$species <- gsub(" ", "_", spdata$species)
+sp.info <- spdata %>% filter(species %in% spp)
 table(sp.info$lifeForm)
+table(sp.info$source_occurrence)
 
 ####Ecoregions####
 #Get richness of lifeforms
 lf_indices <- list.files("Data/PAM_indices/", full.names = TRUE)
-#Remove others
-lf_indices <- lf_indices[!grepl("Other", lf_indices)]
 
 #Read data
 lf_indices <- pblapply(lf_indices, readRDS)
@@ -23,14 +26,15 @@ lf_indices <- pblapply(lf_indices, readRDS)
 lf_names <- sapply(lf_indices, function(x) x$lifeform)
 names(lf_indices) <- lf_names
 #Reorder lifeforms
-lf_names <- c("All", "Tree", "Liana", "Shrub", "Subshrub", "Herb")
+lf_names <- c("All", "Tree", "Liana", "Shrub", "Subshrub", "Herb",
+              "Bamboo", "Palm_tree")
 
 #Reorder lf_indices
 lf_indices <- lapply(lf_names, function(x) lf_indices[[x]])
 names(lf_indices) <- lf_names
 
 #Rasterize indices
-af <- vect("https://github.com/wevertonbio/spatial_files/raw/main/Data/AF_dissolved.gpkg")
+af <- vect("https://github.com/wevertonbio/spatial_files/raw/main/Data/AF_limite_integrador.gpkg")
 r_base <- rast(ext = ext(af), res = 0.08333333)
 #Test
 #x <- lf_indices[[1]]
@@ -44,7 +48,7 @@ r <- pblapply(lf_indices, function(x){
 plot(r[[1]])
 
 
-af_eco <- vect("../spatial_files/Data/Ecoregions_Atlantic_Forest_simplified.gpkg")
+af_eco <- vect("Data/Ecoregions_af.gpkg")
 plot(af_eco)
 
 #Extract mean richness by ecoregions

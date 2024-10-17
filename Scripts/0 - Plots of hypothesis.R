@@ -134,7 +134,7 @@ ggsave("Data/Hypothesis/Seasonality2.png", g.seas2, dpi = 300, height = 8.5)
 g.tol <- ggplot(data, aes(x = X, y = Y_negative)) +
   geom_line(size = 3, colour = "firebrick") +
   geom_line(data =data, aes(x = X, y = Y_positive), size = 3, colour = "forestgreen") +
-  xlab("Extreme of temperature\nor precipitation") + ylab("Richness") +
+  xlab("Extreme of temperature") + ylab("Richness") +
   theme_classic() +
   theme(axis.line.y = element_line(arrow = grid::arrow(length = unit(0.75, "cm"), 
                                                        ends = "last", type = "closed"),
@@ -155,7 +155,7 @@ ggsave("Data/Hypothesis/Tolerance.png", g.tol, dpi = 300, height = 8.5)
 #Tolerance (Positive)
 g.tol2 <- ggplot(data, aes(x = X, y = Y_positive)) +
   geom_line(size = 3, colour = "forestgreen") +
-  xlab("Extremes of temperature\nor precipitation") + ylab("Richness") +
+  xlab("Extremes of temperature") + ylab("Richness") +
   theme_classic() +
   theme(axis.line.y = element_line(arrow = grid::arrow(length = unit(0.75, "cm"), 
                                                        ends = "last", type = "closed"),
@@ -169,11 +169,11 @@ g.tol2 <- ggplot(data, aes(x = X, y = Y_positive)) +
         axis.text.y = element_blank(),
         axis.title.y = element_text(size = 50),
         axis.title.x = element_text(size = 50)) +
-  annotate("text", x = min(data$X), y = -2, label = "Colder/Dryer", size = 13, hjust = 0) +
-  annotate("text", x = max(data$X), y = -2, label = "Warmer/Wetter", size = 13, hjust = 1)
+  annotate("text", x = min(data$X), y = -2, label = "Colder", size = 13, hjust = 0) +
+  annotate("text", x = max(data$X), y = -2, label = "Warmer", size = 13, hjust = 1)
 
 g.tol2
-ggsave("Data/Hypothesis/Tolerance2.png", g.tol2, dpi = 300, height = 8.5)
+ggsave("Data/Hypothesis/Tolerance2.png", g.tol2, dpi = 300, width = 11.8, height = 8.5)
 
 #Topographic 
 g.topo <- ggplot(data, aes(x = X, y = Y_positive)) +

@@ -47,7 +47,7 @@ names(all_data) <- sapply(all_data, function(x) {unique(x$lifeform)})
 
 #Run models
 #Test model
-x <- all_data[[10]]
+x <- all_data[[8]]
 
 #Run models by lifeform
 pblapply(all_data, function(x){
@@ -57,7 +57,7 @@ pblapply(all_data, function(x){
   #dt[names(all_var)] <- scale(dt[names(all_var)])
   
   #### Run in parallel ####
-  cl <- makeCluster(8)
+  cl <- makeCluster(10)
   clusterExport(cl, varlist= c("my_f", "dt"), #Send objects to nodes
                 envir=environment())
   clusterEvalQ(cl, {  #Send packages to nodes

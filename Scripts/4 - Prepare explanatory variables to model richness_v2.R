@@ -47,8 +47,15 @@ names(o_var) <- c("Mid_domain", "PET", "Aridity", "Prec_stab", "Lat_EV",
 #All variables
 all_var <- c(var, o_var)
 plot(all_var)
-#Get correlation
+#Get correlation only linear
 df_cor <- as.data.frame(all_var) %>% na.omit() %>% cor()
+#Get correlation (linear and quadratic)
+d2 <- as.data.frame(all_var) %>% na.omit()
+dq <- apply(d2, 2, function(x) x^2)
+colnames(dq) <- paste0("I(", colnames(dq), ")^2")
+dq <- cbind(d2, dq)
+df_cor2 <- cor(dq)
+
 #Save variables correlation
 write.csv(df_cor, "Data/Variables/Correlation_variables.csv")
 #Remove some variables with high correlation
@@ -56,7 +63,7 @@ write.csv(df_cor, "Data/Variables/Correlation_variables.csv")
 #Subset and reorder variables
 names(all_var) %>% dput()
 all_var <- all_var[[c("Aridity",  #Energy 
-                      #"PET", #Remove PET because it has high correlation with Bio15
+                      "PET", 
                       "Bio06",  #Tolerance
                       #"Bio14", #Remove Bio14 because it has high correlation with Bio15
                       "Bio02", "Bio15", #Seasonality
@@ -73,7 +80,7 @@ all_var <- terra::rast("Data/Variables/Explanatory_Variables.tiff")
 z <- enmpa::get_formulas(dependent = "Richness",
                          independent = names(all_var),
                          type = "lq",
-                         minvar = 5, #Minimum of 5 variables
+                         minvar = 4, #Minimum of 4 variables
                          mode = "intensive")
 length(z)
 head(z)
@@ -108,7 +115,25 @@ my_f3 <- my_f2[which(!grepl("Mid_domain\\^2|Topo_het\\^2|Lat_EV\\^2", my_f2))]
 #See formulas
 my_f3 %>% as.data.frame() %>% View()
 
+#Remove formulas with correlated variables
+library(tidyr)
+head(df_cor2)
+#Get pairwise correlations
+df_cor2 <- df_cor2 %>% as.data.frame() %>% mutate(var1 = row.names(.), .before = 1)
+par_cor <- gather(data = df_cor2, key = "var2", value = "correlation", -var1)
+#Get only correlation > 0.7
+cor7 <- par_cor %>% filter(correlation > 0.7 | correlation < -0.7)
+#Remove formulas with PET and Bio15
+pet15 <- pbsapply(my_f3, function(x){
+  is_pet <- grepl("PET", x)
+  is_15 <- grepl("Bio15", x)
+  all(is_pet, is_15)
+  })
+my_f4 <- my_f3[!pet15]
+as.data.frame(my_f4) %>% View()
+
+
 #Save formulas
-saveRDS(my_f3, "Data/Variables/Formulas.RDS")
+saveRDS(my_f4, "Data/Variables/Formulas.RDS")
 
 

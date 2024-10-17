@@ -24,7 +24,7 @@ setdiff(spp_pam, spinfo$species) #Should be 0
 # fwrite(PAM2, "Data/PAM.gzip", row.names = FALSE, compress = "gzip")
 
 #Remove coordinates
-pam_all <- PAM %>% dplyr::select(-x, -y) %>% as.matrix()
+pam_herbs <- PAM %>% dplyr::select(-x, -y) %>% as.matrix()
 
 ####Import function####
 #pam_indices_gpu modified from biosurvey to run in GPU (faster!)
@@ -52,7 +52,7 @@ pblapply(seq_along(lf), function(i){
   #Get species in lifeform i
   lf_i <- lf[i] 
   sp_i <- spinfo %>% filter(lifeForm == lf_i)
-  spp_i <- subset(colnames(pam_all), colnames(pam_all) %in% sp_i$species)
+  spp_i <- subset(colnames(pam_herbs), colnames(pam_herbs) %in% sp_i$species)
   #Get PAM of lifeforms i
   pam_i <- PAM %>% dplyr::select(spp_i) %>% as.matrix()
   #Calculate index
@@ -68,6 +68,22 @@ pblapply(seq_along(lf), function(i){
   gc()
   torch::cuda_empty_cache()
 })
+
+#Calculate PAM indice merging herbs
+spp_herbs <- spinfo %>% filter(grepl("herb", lifeForm))
+spp_herbs <- intersect(spp_herbs$species, colnames(PAM))
+pam_herbs <- PAM %>% dplyr::select(spp_herbs) %>% as.matrix()
+ind_herbs <- PAM_indices_gpu(PAM = pam_herbs, indices = "basic")
+#Include in the list x and y
+ind_herbs$xy <- PAM %>% dplyr::select(x, y) %>% as.matrix()
+#Include in the list the lifeform
+ind_herbs$lifeform <- "Herb"
+#Empty cuda cache
+torch::cuda_empty_cache()
+#Save
+saveRDS(ind_herbs, "Data/PAM_indices/Indices_Herb.rds")
+rm(ind_herbs)
+
 
 ####Not used####
 # ####Run Null_matrix_in_cluster and Null_matrix_in_cluster_by_lifeform to get the null Matrix####
@@ -164,7 +180,7 @@ pblapply(seq_along(lf), function(i){
 # #Get random matrix in paralelle
 # library(parallel)
 # cl <- makeCluster(40)
-# clusterExport(cl, varlist = "pam_all", #Get PAM2
+# clusterExport(cl, varlist = "pam_herbs", #Get PAM2
 #               envir=environment())
 # clusterEvalQ(cl, {
 #   library(picante)
@@ -175,9 +191,9 @@ pblapply(seq_along(lf), function(i){
 # dir.create("PAM_indices/Null_Matrix/All/")
 # pblapply(1:999, function(i){
 #   set.seed(i)
-#   random_matrix_i <- picante::randomizeMatrix(samp = pam_all, 
+#   random_matrix_i <- picante::randomizeMatrix(samp = pam_herbs, 
 #                                               null.model = "trialswap",
-#                                               iterations = length(pam_all)*10)
+#                                               iterations = length(pam_herbs)*10)
 #   saveRDS(random_matrix_i, paste0("PAM_indices/Null_Matrix/All/m", i, ".rds"))
 # }, cl = cl)
 # stopCluster(cl)
