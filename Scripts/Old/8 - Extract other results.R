@@ -1,55 +1,52 @@
 library(dplyr)
 library(data.table)
 library(pbapply)
-library(terra)
 #Get informations
-pam <- fread("Data/PAM.gz")
+pam <- fread("Data/PAM.gzip")
 spp <- pam %>% dplyr::select(-x, -y) %>% colnames()
 head(spp)
 length(spp)
 #Get information of species
-spdata <- fread("Data/SpeciesData_v2.gz")
+spdata <- fread("Data/SpeciesData.gz")
 unique(spdata$species) %>% length()
 head(spdata$species)
 spdata$species <- gsub(" ", "_", spdata$species)
 sp.info <- spdata %>% filter(species %in% spp)
 table(sp.info$lifeForm)
 table(sp.info$source_occurrence)
-sp.info %>% count(lifeForm)
-
-
-# Species not modeled, but included in analysis
-pam2 <- fread("Data/PAM_with_occurrences.gz")
-spp2 <- pam2 %>% dplyr::select(-x, -y) %>% colnames()
-spp2 <- setdiff(spp2, spp)
-sp.info2 <- spdata %>% filter(species %in% spp2)
-sp.info2 %>% count(lifeForm) %>% View()
 
 ####Ecoregions####
 #Get richness of lifeforms
-lf_indices <- readRDS("Data/Richness_by_lifeform.rds")
+lf_indices <- list.files("Data/PAM_indices/", full.names = TRUE)
 
-# Get xy
-xy <- lf_indices$xy
-lf_indices$xy <- NULL
+#Read data
+lf_indices <- pblapply(lf_indices, readRDS)
 
-
+#Get lifeforms
+lf_names <- sapply(lf_indices, function(x) x$lifeform)
+names(lf_indices) <- lf_names
 #Reorder lifeforms
-lf_names <- names(lf_indices)
+lf_names <- c("All", "Tree", "Liana", "Shrub", "Subshrub", "Herb",
+              "Bamboo", "Palm_tree")
 
+#Reorder lf_indices
+lf_indices <- lapply(lf_names, function(x) lf_indices[[x]])
+names(lf_indices) <- lf_names
 
 #Rasterize indices
 af <- vect("https://github.com/wevertonbio/spatial_files/raw/main/Data/AF_limite_integrador.gpkg")
 r_base <- rast(ext = ext(af), res = 0.08333333)
 #Test
 #x <- lf_indices[[1]]
-r <- rast(pblapply(lf_indices, function(x){
-  r_x <- rasterize(x = as.matrix(xy),
-                   y = r_base, values = x, fun = "mean",
-                   background = 0)
-}))
+r <- pblapply(lf_indices, function(x){
+  rx <- rasterize(x$xy, r_base,
+                  values = x$Richness)
+  rx[rx == 0] <- NA
+  names(rx) <- "Richness"
+  return(rx)
+}) %>% rast()
 plot(r[[1]])
-names(r)
+
 
 af_eco <- vect("Data/Ecoregions_af.gpkg")
 plot(af_eco)
@@ -64,8 +61,7 @@ mean_eco
 
 #Extract top3 ecoregions for each lifeform
 top3 <- pblapply(lf_names, function(i){
-  top_n(mean_eco[, c("Ecoregion", i)], n = 4) %>% 
+  top_n(mean_eco[, c("Ecoregion", i)], n = 3) %>% 
     pull(Ecoregion)
 })
 names(top3) <- lf_names
-top3

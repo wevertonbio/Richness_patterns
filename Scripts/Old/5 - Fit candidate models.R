@@ -3,7 +3,7 @@
 library(enmpa)
 library(terra)
 library(dplyr)
-#library(sjPlot)
+library(sjPlot)
 library(pbapply)
 library(parallel)
 library(MASS)
@@ -12,56 +12,52 @@ library(performance)
 library(moranfast)
 
 ####FIT CANDIDATE MODELS####
-dir.create("Data/Models/Candidate_models_v2", recursive = TRUE)
+dir.create("Data/Models/Candidate_models", recursive = TRUE)
 #Import data
-my_f <- readRDS("Data/Variables/Formulas_v2.RDS") #Formulas
+my_f <- readRDS("Data/Variables/Formulas.RDS") #Formulas
 all_var <- rast("Data/Variables/Explanatory_Variables.tiff") #Explanatory Variables
 my_var <- names(all_var) #Get names of variables
 
 #Get richness of lifeforms
-lf_indices <- readRDS("Data/Richness_by_lifeform.rds")
-# Get xy
-xy <- lf_indices$xy
-lf_indices$xy <- NULL
+lf_indices <- list.files("Data/PAM_indices/", full.names = TRUE)
+lf_indices <- pblapply(lf_indices, readRDS)
 
 #Plot rasters to check
 rich <- rast(pblapply(lf_indices, function(x){
-  r_x <- rasterize(x = as.matrix(xy),
-                   y = all_var, values = x, fun = "mean",
+  r_x <- rasterize(x = x$xy, y = all_var, values = x$Richness, fun = "mean",
                    background = 0)
 }))
 plot(rich[[1]])
 
 #Extract values of environmental variables 
-all_data <- pblapply(names(lf_indices), function(i){
+all_data <- pblapply(lf_indices, function(i){
+  lf_i <- i
   #Create dataframe with lifeform, coordinates and richness
-  df_i <- data.frame(xy,
-                     lifeform = i,
-                     Richness = lf_indices[[i]])
+  df_i <- data.frame(lifeform = lf_i$lifeform,
+                     lf_i$xy,
+                     Richness = lf_i$Richness,
+                     Richness_normalized = lf_i$Richness_normalized)
   #Extract values from explanatory variabkes
-  pt_var <- terra::extract(all_var, as.matrix(xy)) %>%
+  pt_var <- terra::extract(all_var, df_i %>% dplyr::select(x, y), ID = FALSE) %>%
     cbind(df_i, .) %>% na.omit()
   return(pt_var)
 })
 #Rename
-names(all_data) <- names(lf_indices)
+names(all_data) <- sapply(all_data, function(x) {unique(x$lifeform)})
 
 #Run models
 #Test model
-x <- all_data[[6]]
+x <- all_data[[8]]
 
 #Run models by lifeform
 pblapply(all_data, function(x){
   dt <- x
-  # Remove sites with less than 20 species
-  dt <- dt %>% filter(Richness >= 20)
-  
   message("Fitting models for ", unique(dt$lifeform))
   #Normalize data
   #dt[names(all_var)] <- scale(dt[names(all_var)])
   
   #### Run in parallel ####
-  cl <- makeCluster(18)
+  cl <- makeCluster(10)
   clusterExport(cl, varlist= c("my_f", "dt"), #Send objects to nodes
                 envir=environment())
   clusterEvalQ(cl, {  #Send packages to nodes
@@ -111,10 +107,14 @@ pblapply(all_data, function(x){
   
   all_m2 <- Filter(Negate(is.null), all_m)
   df_m <- bind_rows(all_m2)
-  
+  # write.csv(df_m,
+  #           paste0("Data/Models/Candidate_models/",
+  #                  dt$lifeform[1], #Lifeform
+  #                  ".csv"),
+  #           row.names = F)
   saveRDS(df_m,
-          paste0("Data/Models/Candidate_models_v2/",
-                 unique(dt$lifeform), #Lifeform
+          paste0("Data/Models/Candidate_models/",
+                 dt$lifeform[1], #Lifeform
                  ".RDS"))
   
   stopCluster(cl)

@@ -25,8 +25,8 @@ od <- bind_rows(od)
 
 
 #QQPlot
-png(filename = "Figures/QQplot.png", units = "in", width = 8, height = 12, res = 300)
-par(mfrow = c(4, 2)) # Create a 2 x 2 plotting matrix
+png(filename = "Figures/QQplot.png", units = "in", width = 8, height = 6, res = 300)
+par(mfrow = c(2, 3)) # Create a 2 x 2 plotting matrix
 pblapply(names(bml), function(x){
   DHARMa::plotQQunif(bml[[x]], testOutliers = FALSE, testDispersion = FALSE, main = x)
   })

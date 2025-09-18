@@ -12,14 +12,14 @@ library(performance)
 library(moranfast)
 
 ####FIT CANDIDATE MODELS####
-dir.create("Data/Models/Candidate_models_v2", recursive = TRUE)
+dir.create("Data/Models_withOccurrences//Candidate_models", recursive = TRUE)
 #Import data
-my_f <- readRDS("Data/Variables/Formulas_v2.RDS") #Formulas
+my_f <- readRDS("Data/Variables/Formulas.RDS") #Formulas
 all_var <- rast("Data/Variables/Explanatory_Variables.tiff") #Explanatory Variables
 my_var <- names(all_var) #Get names of variables
 
 #Get richness of lifeforms
-lf_indices <- readRDS("Data/Richness_by_lifeform.rds")
+lf_indices <- readRDS("Data/Richness_by_lifeform_withOccurrences.rds")
 # Get xy
 xy <- lf_indices$xy
 lf_indices$xy <- NULL
@@ -48,7 +48,7 @@ names(all_data) <- names(lf_indices)
 
 #Run models
 #Test model
-x <- all_data[[6]]
+x <- all_data[[2]]
 
 #Run models by lifeform
 pblapply(all_data, function(x){
@@ -113,7 +113,7 @@ pblapply(all_data, function(x){
   df_m <- bind_rows(all_m2)
   
   saveRDS(df_m,
-          paste0("Data/Models/Candidate_models_v2/",
+          paste0("Data/Models_withOccurrences/Candidate_models/",
                  unique(dt$lifeform), #Lifeform
                  ".RDS"))
   

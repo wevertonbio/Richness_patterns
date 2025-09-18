@@ -11,23 +11,15 @@ library(ggsci)
 dir.create("Figures")
 
 #### Effects/Predictions ####
-#PET
 lp <- list.files("Data/Models/Predictions/",
                  full.names = TRUE)
-lp_pet <- lp[grepl("pet", lp)]
-lp_pet <- pblapply(lp_pet, readRDS)
-d_pet <- bind_rows(lp_pet) %>% mutate("set" = "pet")
+lp <- pblapply(lp, readRDS)
+#Merge data
+d <- bind_rows(lp)
 
-#Bio15
-lp_bio15 <- lp[grepl("bio15", lp)]
-lp_bio15 <- pblapply(lp_bio15, readRDS)
-d_bio15 <- bind_rows(lp_bio15) %>% mutate("set" = "bio15")
+#Remove spatial filters
+d <- d %>% filter(!grepl("EV", group))
 
-#Join data
-d <- rbind(d_pet, d_bio15)
-
-#Remove bamboos and palm trees
-d <- d %>% filter(!(lifeForm %in% c("Bamboo", "Palm_tree")))
 
 #Set colors
   #See colors
@@ -45,8 +37,8 @@ myc <- c("#D55E00", #Aridity
          "#3C5488FF", #Bio15
          "#F39B7FFF", #Temp_stab
          "#56B4E9", #Prec_stab
-         "#7E6148FF", #Topoi_het
-         "#000002") #Mid-domain
+         "#7E6148FF") #Topoi_het
+         #"#000002") #Mid-domain
          #"grey50", #Spatial EV1
          #"grey45") #Spatial (Ev2)
 
@@ -61,105 +53,214 @@ d$group <- factor(d$group,
                             #"Bio07",
                             "Bio15",
                             "Temp_stab", "Prec_stab",
-                            "Topo_het", "Mid_domain"
-                            #"Long_EV", "Lat_EV"
+                            "Topo_het"
+                            #"Long_EV", "Lat_EV", "Mid_domain"
                             ),
                  labels = c("Aridity",
-                            "PET",
-                            "Minimum\nTemp. of\nColdest Month",
+                            "PET\n(mm/year)",
+                            "Minimum\nTemperature of\nColdest Month\n(ºC)",
                             #"Precipitation\nof Driest\nMonth",
-                            "Mean Diurnal\nRange",
+                            "Mean Diurnal\nRange (ºC)",
                             #"Temperature\nAnnual Range",
-                            "Precipitation\nSeasonality",
+                            "Precipitation\nSeasonality (%)",
                             "Temperature\nstability",
                             "Precipitation\nstability",
-                            "Topographic\nheterogeneity",
-                            "Mid-Domain"
+                            "Topographic\nheterogeneity"
                             #"Spatial\nfilter X",
-                            #"Spatial\nfilter Y"
+                            #"Spatial\nfilter Y",
+                            # "Mid-Domain"
                             ))
 #Rename colors
 names(myc) <- c("Aridity",
-                "PET",
-                "Minimum\nTemp. of\nColdest Month",
-                "Mean Diurnal\nRange",
-                "Precipitation\nSeasonality",
+                "PET\n(mm/year)",
+                "Minimum\nTemperature of\nColdest Month\n(ºC)",
+                #"Precipitation\nof Driest\nMonth",
+                "Mean Diurnal\nRange (ºC)",
+                #"Temperature\nAnnual Range",
+                "Precipitation\nSeasonality (%)",
                 "Temperature\nstability",
                 "Precipitation\nstability",
-                "Topographic\nheterogeneity",
-                "Mid-Domain")
+                "Topographic\nheterogeneity")
+                #"Mid-Domain")
 
 
 unique(d$lifeForm)
 d$lifeForm <- factor(d$lifeForm,
                      levels = c("All", "Tree", "Liana",
-                                  "Shrub", "Subshrub",
-                                  "Herb"
+                                "Shrub", "Subshrub",
+                                "Terrestrial_herb", "Epiphytic_herb"
                                   #"Bamboo", "Palm_tree"
                                 ),
                      labels = c("All", "Tree", "Liana",
                                 "Shrub", "Subshrub",
-                                "Herb" 
+                                "Terrestrial\nherb", "Epiphytic\nherb"
                                 #"Bamboo", "Palm tree"
                                 ))
-         
+
+# # Identify if coefficient is positive, negative or non-significant
+# d <- d %>%
+#   mutate(direction = case_when(
+#     Estimate > 0 ~ "positive",
+#     Estimate <= 0 ~ "negative"
+#   ))
+#          
+# pc <- d %>% select(lifeForm, group, `Pr(>|z|)`, direction) %>% distinct()
+# pc$direction[pc$`Pr(>|z|)`> 0.05] <- "non-significant"
+
+
+# Identify non-significant variables
+d <- d %>% mutate(Significant = ifelse(`Pr(>|z|)` > 0.05, FALSE, TRUE))
+
+# Remove non-significant variables
+d <- d %>% filter(Significant)
+
 #Plot
-pblapply(unique(d$set), function(x){
-  d_x <- d[d$set == x,] %>% filter(!is.na(group))
-  #Subset colors
-  myc_x <- myc[names(myc) %in% unique(d_x$group)]
-  d_x$group <- droplevels(d_x$group)
-  
-  gd <- ggplot(d_x, aes(x = x, y = predicted, colour = group)) +
-    geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = group,
-                    colour = NULL), alpha = 0.5) +
-    geom_line() +
-    scale_colour_manual(values = myc_x, na.translate = FALSE) +
-    scale_fill_manual(values = myc_x, na.translate = FALSE) +
-    facet_grid(lifeForm ~ group, scales = "free") +
-    xlab("Variables") + ylab("Predicted richness") + 
-    #theme_bw() +
-    ggpubr::theme_pubclean() +
-    theme(legend.position = "none",
-          panel.background = element_rect(fill = "white", 
-                                          colour = NA),
-          panel.border = element_rect(fill = NA, colour = "grey20"),
-          axis.text.x = element_text(angle = 45, hjust=1, size = 8),
-          axis.text.y = element_text(size = 8),
-          axis.title.x =  element_text(size = 20),
-          axis.title.y =  element_text(size = 20),
-          strip.text = element_text(size = 11))
-  # X11()
-  # gd
-  #Save as PNG file
-  filename <- paste0("Figures/Predictions_", x, ".png")
-  ggsave(filename, gd, units = "px",
-         dpi = 600, width = 1750,
-         height = 1400, scale= 3.5)
-})
+gd <- ggplot(data = d, aes(x = x, y = predicted, colour = group)) +
+  # geom_rect(data = pc,
+  #           xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf,
+  #           aes(fill = direction),
+  #           alpha = 0.1, inherit.aes = FALSE) +
+  # scale_fill_manual(values = c("firebrick", "white", "#009E73")) +
+  # ggnewscale::new_scale_fill() +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = group,
+                  colour = NULL), alpha = 0.5) +
+  geom_line(linewidth = 1.1) +
+  scale_colour_manual(values = myc, na.translate = FALSE) +
+  scale_fill_manual(values = myc, na.translate = FALSE) +
+  facet_grid(lifeForm ~ group, scales = "free") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 5)) +
+  xlab("Variables") + ylab("Predicted richness") + 
+  #theme_bw() +
+  ggpubr::theme_pubclean() +
+  theme(legend.position = "none",
+        #panel.background = element_rect(fill = "white", 
+        #                                colour = NA),
+        panel.border = element_rect(fill = NA, colour = "grey20"),
+        axis.text.x = element_text(angle = 45, hjust=1, size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.x =  element_text(size = 20),
+        axis.title.y =  element_text(size = 20),
+        strip.text = element_text(size = 11))
+
+#Save as PNG file
+ggsave("Figures/Predictions.png", gd, units = "px",
+       dpi = 600, width = 1850,
+       height = 1850, scale= 3.5)
+
+#### Effects/Predictions - With Occurrences ####
+lp_wo <- list.files("Data/Models_withOccurrences//Predictions/",
+                 full.names = TRUE)
+lp_wo <- pblapply(lp_wo, readRDS)
+#Merge data
+d_wo <- bind_rows(lp_wo)
+
+#Remove spatial filters
+d_wo <- d_wo %>% filter(!grepl("EV", group))
+
+#Make factors
+unique(d_wo$group)
+d_wo$group <- factor(d_wo$group,
+                     levels = c("Aridity",
+                                "PET",
+                                "Bio06",
+                                #"Bio14",
+                                "Bio02",
+                                #"Bio07",
+                                "Bio15",
+                                "Temp_stab", "Prec_stab",
+                                "Topo_het"
+                                #"Long_EV", "Lat_EV", "Mid_domain"
+                     ),
+                     labels = c("Aridity",
+                                "PET\n(mm/year)",
+                                "Minimum\nTemperature of\nColdest Month\n(ºC)",
+                                #"Precipitation\nof Driest\nMonth",
+                                "Mean Diurnal\nRange (ºC)",
+                                #"Temperature\nAnnual Range",
+                                "Precipitation\nSeasonality (%)",
+                                "Temperature\nstability",
+                                "Precipitation\nstability",
+                                "Topographic\nheterogeneity"
+                                #"Spatial\nfilter X",
+                                #"Spatial\nfilter Y",
+                                # "Mid-Domain"
+                     ))
+#Rename colors
+names(myc) <- c("Aridity",
+                "PET\n(mm/year)",
+                "Minimum\nTemperature of\nColdest Month\n(ºC)",
+                #"Precipitation\nof Driest\nMonth",
+                "Mean Diurnal\nRange (ºC)",
+                #"Temperature\nAnnual Range",
+                "Precipitation\nSeasonality (%)",
+                "Temperature\nstability",
+                "Precipitation\nstability",
+                "Topographic\nheterogeneity")
+
+
+unique(d_wo$lifeForm)
+d_wo$lifeForm <- factor(d_wo$lifeForm,
+                     levels = c("All", "Tree", "Liana",
+                                "Shrub", "Subshrub",
+                                "Terrestrial_herb", "Epiphytic_herb"
+                                #"Bamboo", "Palm_tree"
+                     ),
+                     labels = c("All", "Tree", "Liana",
+                                "Shrub", "Subshrub",
+                                "Terrestrial\nherb", "Epiphytic\nherb"
+                                #"Bamboo", "Palm tree"
+                     ))
+
+# Identify non-significant variables
+d_wo <- d_wo %>% mutate(Significant = ifelse(`Pr(>|z|)` > 0.05, FALSE, TRUE))
+
+# Remove non-significant variables
+d_wo <- d_wo %>% filter(Significant)
+
+#Plot
+gd_wo <- ggplot(data = d_wo, aes(x = x, y = predicted, colour = group)) +
+  # geom_rect(data = pc_wo,
+  #           xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf,
+  #           aes(fill = direction),
+  #           alpha = 0.1, inherit.aes = FALSE) +
+  scale_fill_manual(values = c("firebrick", "white", "#009E73")) +
+  ggnewscale::new_scale_fill() +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = group,
+                  colour = NULL), alpha = 0.5) +
+  geom_line(linewidth = 1.1) +
+  scale_colour_manual(values = myc, na.translate = FALSE) +
+  scale_fill_manual(values = myc, na.translate = FALSE) +
+  facet_grid(lifeForm ~ group, scales = "free") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 5)) +
+  xlab("Variables") + ylab("Predicted richness") + 
+  #theme_bw() +
+  ggpubr::theme_pubclean() +
+  theme(legend.position = "none",
+        #panel.background = element_rect(fill = "white", 
+        #                                colour = NA),
+        panel.border = element_rect(fill = NA, colour = "grey20"),
+        axis.text.x = element_text(angle = 45, hjust=1, size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.x =  element_text(size = 20),
+        axis.title.y =  element_text(size = 20),
+        strip.text = element_text(size = 11))
+
+#Save as PNG file
+ggsave("Figures/Predictions_With_Occurrence.png", gd_wo, units = "px",
+       dpi = 600, width = 1850,
+       height = 1850, scale= 3.5)
+
+
 
 #### Variables importance ####
 li <- list.files("Data/Models/Partitioning/", full.names = TRUE)
-li_pet <- li[grepl("pet", li)]
-li_pet <- pblapply(li_pet, readRDS)
-dfi_pet <- bind_rows(li_pet) %>% mutate("set" = "pet")
-li_bio15 <- li[grepl("bio15", li)]
-li_bio15 <- pblapply(li_bio15, readRDS)
-dfi_bio15 <- bind_rows(li_bio15) %>% mutate("set" = "bio15")
-
-#Merge data
-dfi <- rbind(dfi_pet, dfi_bio15)
-
-#Remove bamboos and palm trees
-dfi <- dfi %>% filter(!(lifeForm %in% c("Bamboo", "Palm_tree")))
+li <- pblapply(li, readRDS)
+dfi <- bind_rows(li)
 unique(dfi$lifeForm)
-# 
-# 
-# #Keep only variables with some importance
-# sum_imp_by_var <- dfi %>% group_by(Variable) %>% 
-#   summarise(Total = sum(Importance))
-# var_with_imp <- sum_imp_by_var %>% filter(Total > 0) %>% pull(Variable)
-# dfi <- dfi %>% filter(Variable %in% var_with_imp)
+unique(dfi$Variable)
+
+# Remove Precipitation Seasonality
+dfi <- dfi %>% filter(Variable != "Bio15")
 
 #Get colors
 unique(dfi$Variable) %>% as.character() %>% sort()
@@ -188,8 +289,6 @@ names(myc) <- c("Aridity",
                 "Topographic\nheterogeneity",
                 "Mid-Domain", 
                 "Spatial")
-
-
 #Make factors
 dfi$Variable <-factor(dfi$Variable,
                       levels = c("Aridity",
@@ -218,54 +317,141 @@ unique(dfi$lifeForm)
 dfi$lifeForm <- factor(dfi$lifeForm,
                        levels = c("All", "Tree", "Liana",
                                   "Shrub", "Subshrub",
-                                  "Herb"),
+                                  "Terrestrial_herb", "Epiphytic_herb"
+                                  #"Bamboo", "Palm_tree"
+                       ),
                        labels = c("All", "Tree", "Liana",
                                   "Shrub", "Subshrub",
-                                  "Herb"))
+                                  "Terrestrial\nherb", "Epiphytic\nherb"
+                                  #"Bamboo", "Palm tree"
+                       ))
 
 #Plot
-pblapply(unique(dfi$set), function(x){
-  dfi_x <- dfi[dfi$set == x,]
-  
-  if(x == "pet")
-    dfi_x <- dfi_x %>% filter(Variable != "Precipitation\nSeasonality")
-  
-  if(x == "bio15")
-    dfi_x <- dfi_x %>% filter(Variable != "PET")
-  
-  #Subset colors
-  myc_x <- myc[names(myc) %in% unique(dfi_x$Variable)]
-  dfi_x$Variable <- droplevels(dfi_x$Variable)
-  
-  #Plot
-  g_imp <- ggplot(data = dfi_x, aes(x = Variable, y = Importance, fill = Variable)) +
-    geom_bar(stat = "identity", color = "black") +
-    scale_fill_manual(values = myc_x) +
-    facet_wrap(.~lifeForm) +
-    ggpubr::theme_pubclean() +
-    #theme_stata() +
-    #theme_wsj()+ 
-    theme(axis.text.x= element_blank(),
-          legend.position = "bottom",
-          legend.title = element_blank(),
-          panel.border=element_rect(colour="black",size=1, fill = NA),
-          axis.title.x = element_text(size = 20),
-          axis.title.y = element_text(size = 20),
-          strip.text = element_text(size = 14),
-          axis.ticks.x=element_blank(),
-          legend.text = element_text(size = 16),
-          legend.spacing.y = unit(0.25, 'cm'),
-          legend.spacing.x = unit(0.2, 'cm')) +
-    guides(fill = guide_legend(byrow = TRUE))
-  
-  #Save
-  filename <- paste0("Figures/VariableImportance_", x, ".png")
-  ggsave(filename,
-         g_imp, dpi = 600, units = "px", width = 2500,
-         height = 1450, scale = 3)
-  })
+g_imp <- ggplot(data = dfi, aes(x = Variable, y = Importance, fill = Variable)) +
+  geom_bar(stat = "identity", color = "black") +
+  scale_fill_manual(values = myc) +
+  facet_wrap(.~lifeForm, nrow = 2) +
+  ggpubr::theme_pubclean() +
+  #theme_stata() +
+  #theme_wsj()+ 
+  theme(axis.text.x= element_blank(),
+        legend.position = "bottom",
+        legend.title = element_blank(),
+        panel.border=element_rect(colour="black",size=1, fill = NA),
+        axis.title.x = element_text(size = 20),
+        axis.title.y = element_text(size = 20),
+        strip.text = element_text(size = 14),
+        axis.ticks.x=element_blank(),
+        legend.text = element_text(size = 16),
+        legend.spacing.y = unit(0.25, 'cm'),
+        legend.spacing.x = unit(0.2, 'cm')) +
+  guides(fill = guide_legend(byrow = TRUE))
+g_imp
+#Save
+ggsave("Figures/VariableImportance.png",
+       g_imp, dpi = 600, units = "px", width = 2550,
+       height = 1450, scale = 3)
 
+#### Variables importance - With Occurrences####
+li_wo <- list.files("Data/Models_withOccurrences/Partitioning/", full.names = TRUE)
+li_wo <- pblapply(li_wo , readRDS)
+dfi_wo <- bind_rows(li_wo)
+unique(dfi_wo$lifeForm)
 
+# Remove Precipitation Seasonality
+dfi_wo <- dfi_wo %>% filter(Variable != "Bio15")
+
+#Get colors
+unique(dfi_wo$Variable) %>% as.character() %>% sort()
+myc <- c("#D55E00", #Aridity
+         "#800020", #PET
+         "blue",  #Bio06
+         #"#DC0000FF", #Bio14
+         "#E69F00", #Bio02
+         #"#F0E442", #Bio07
+         "#3C5488FF", #Bio15
+         "#F39B7FFF", #Temp_stab
+         "#56B4E9", #Prec_stab
+         "#7E6148FF", #Topoi_het
+         "#000002", #Mid-domain
+         "#999999") #Spatial (Ev3)
+#Rename colors
+names(myc) <- c("Aridity",
+                "PET",
+                "Minimum\nTemperature of\nColdest Month",
+                #"Precipitation\nof Driest\nMonth",
+                "Mean Diurnal\nRange",
+                #"Temperature\nAnnual Range",
+                "Precipitation\nSeasonality",
+                "Temperature\nstability",
+                "Precipitation\nstability",
+                "Topographic\nheterogeneity",
+                "Mid-Domain", 
+                "Spatial")
+#Make factors
+dfi_wo$Variable <-factor(dfi_wo$Variable,
+                      levels = c("Aridity",
+                                 "PET",
+                                 "Bio06",
+                                 #"Bio14",
+                                 "Bio02",
+                                 #"Bio07",
+                                 "Bio15",
+                                 "Temp_stab", "Prec_stab",
+                                 "Topo_het", "Mid_domain",
+                                 "Spatial"),
+                      labels = c("Aridity",
+                                 "PET",
+                                 "Minimum\nTemperature of\nColdest Month",
+                                 #"Precipitation\nof Driest\nMonth",
+                                 "Mean Diurnal\nRange",
+                                 #"Temperature\nAnnual Range",
+                                 "Precipitation\nSeasonality",
+                                 "Temperature\nstability",
+                                 "Precipitation\nstability",
+                                 "Topographic\nheterogeneity",
+                                 "Mid-Domain", 
+                                 "Spatial"))
+unique(dfi_wo$lifeForm)
+dfi_wo$lifeForm <- factor(dfi_wo$lifeForm,
+                       levels = c("All", "Tree", "Liana",
+                                  "Shrub", "Subshrub",
+                                  "Terrestrial_herb", "Epiphytic_herb"
+                                  #"Bamboo", "Palm_tree"
+                       ),
+                       labels = c("All", "Tree", "Liana",
+                                  "Shrub", "Subshrub",
+                                  "Terrestrial\nherb", "Epiphytic\nherb"
+                                  #"Bamboo", "Palm tree"
+                       ))
+
+#Plot
+g_imp_wo <- ggplot(data = dfi_wo, aes(x = Variable, y = Importance, fill = Variable)) +
+  geom_bar(stat = "identity", color = "black") +
+  scale_fill_manual(values = myc) +
+  facet_wrap(.~lifeForm, nrow = 2) +
+  ggpubr::theme_pubclean() +
+  #theme_stata() +
+  #theme_wsj()+ 
+  theme(axis.text.x= element_blank(),
+        legend.position = "bottom",
+        legend.title = element_blank(),
+        panel.border=element_rect(colour="black",size=1, fill = NA),
+        axis.title.x = element_text(size = 20),
+        axis.title.y = element_text(size = 20),
+        strip.text = element_text(size = 14),
+        axis.ticks.x=element_blank(),
+        legend.text = element_text(size = 16),
+        legend.spacing.y = unit(0.25, 'cm'),
+        legend.spacing.x = unit(0.2, 'cm')) +
+  guides(fill = guide_legend(byrow = TRUE))
+
+#Save
+ggsave("Figures/VariableImportance_with_occurrences.png",
+       g_imp_wo, dpi = 600, units = "px", width = 2550,
+       height = 1450, scale = 3)
+
+  
 ####Plot maps####
 #Load packages
 library(terra)
@@ -282,20 +468,24 @@ br <- vect("https://github.com/wevertonbio/spatial_files/raw/main/Data/Brazil_St
 
 ####Richness####
 #Get richness of lifeforms
-lf_indices <- list.files("Data/PAM_indices/", full.names = TRUE)
+lf_indices <- readRDS("Data/Richness_by_lifeform.rds")
+# Get xy
+xy <- lf_indices$xy
+lf_indices$xy <- NULL
 
-#Read data
-lf_indices <- pblapply(lf_indices, readRDS)
+#Remove palms and bamboos
+names(lf_indices)
+lf_indices <- lf_indices[!grepl("Palm_tree|Bamboo", names(lf_indices))]
 
 #Get lifeforms
-lf_names <- sapply(lf_indices, function(x) x$lifeform)
-names(lf_indices) <- lf_names
+lf_names <- names(lf_indices)
+
 #Reorder lifeforms
-lf_names <- c("All", "Tree", "Liana", "Shrub", "Subshrub", "Herb", "Bamboo", "Palm_tree")
+lf_names <- c("All", "Tree", "Liana", "Shrub", "Subshrub", "Terrestrial_herb",
+              "Epiphytic_herb")
 
 #Reorder lf_indices
-lf_indices <- lapply(lf_names, function(x) lf_indices[[x]])
-names(lf_indices) <- lf_names
+lf_indices <- lf_indices[lf_names]
 
 #Rasterize indices
 af <- vect("https://github.com/wevertonbio/spatial_files/raw/main/Data/AF_limite_integrador.gpkg")
@@ -303,9 +493,11 @@ r_base <- rast(ext = ext(af), res = 0.08333333)
 #Test
 #x <- lf_indices[[1]]
 r <- pblapply(lf_indices, function(x){
-  rx <- rasterize(x$xy, r_base,
-            values = x$Richness)
+  rx <- rasterize(as.matrix(xy), r_base,
+                  values = x)
   rx[rx == 0] <- NA
+  # Remove sites with less than 20 species
+  rx[rx < 20] <- NA
   names(rx) <- "Richness"
   return(rx)
 }) %>% rast()
@@ -355,7 +547,7 @@ p <- pblapply(1:length(names(r)), function(i) {
     coord_sf(xlim = c(bb_af[1] - 0.5, xmax=bb_af[2] + 0.5),
              ylim = c(bb_af[3] - 0.5, ymax=bb_af[4] + 0.5),
              expand = T) +
-    theme(legend.position = c(0.75, 0.19),
+    theme(legend.position = c(0.75, 0.21),
           legend.direction = "vertical",
           text = element_text(family = "Arial"),
           legend.title = element_text(size = 11),
@@ -377,27 +569,143 @@ p <- pblapply(1:length(names(r)), function(i) {
   g
 })
 #Get lifeforms
-lf_names <- pbsapply(lf_indices, function(x){ x$lifeform})
+# lf_names <- pbsapply(lf_indices, function(x){ x$lifeform})
 names(p) <- names(r)
 # #Get letters to legend 
 # my_legend <- paste0("(", letters[1:6], ") ", lf_names)
 
 #Arrange plot
 pp <- wrap_plots(p) + 
-  plot_layout(ncol = 3, axes = "collect")
+  plot_layout(ncol = 4, axes = "collect")
 
 #Save
 ggsave("Figures/Richness.png",
-       pp, dpi = 600, units = "px", width = 1600,
-       height = 1600, scale = 7)
+       pp, dpi = 600, units = "px", width = 1800,
+       height = 980, scale = 7)
+
+####Richness - With Occurrences ####
+#Get richness of lifeforms
+lf_indices_wo <- readRDS("Data/Richness_by_lifeform_withOccurrences.rds")
+# Get xy
+xy_wo <- lf_indices_wo$xy
+lf_indices_wo$xy <- NULL
+
+#Remove palms and bamboos
+names(lf_indices_wo)
+lf_indices_wo <- lf_indices_wo[!grepl("Palm_tree|Bamboo", names(lf_indices_wo))]
+
+#Get lifeforms
+lf_names_wo <- names(lf_indices_wo)
+
+#Reorder lifeforms
+lf_names_wo <- c("All", "Tree", "Liana", "Shrub", "Subshrub", "Terrestrial_herb",
+              "Epiphytic_herb")
+
+#Reorder lf_indices
+lf_indices_wo <- lf_indices_wo[lf_names_wo]
+
+#Rasterize indices
+#Test
+#x <- lf_indices[[1]]
+r_wo <- pblapply(lf_indices_wo, function(x){
+  rx <- rasterize(as.matrix(xy_wo), r_base,
+                  values = x)
+  rx[rx == 0] <- NA
+  # Remove sites with less than 20 species
+  rx[rx < 20] <- NA
+  names(rx) <- "Richness"
+  return(rx)
+}) %>% rast()
+plot(r_wo[[1]])
+plot(r_wo)
+
+#Get box limits to plot
+bb_af <- ext(r_wo[[1]])
+
+#Replace _ by space in names r
+names(r_wo) <- gsub("_", " ", names(r_wo))
+
+#Test
+#i <- 2
+p_wo <- pblapply(1:length(names(r_wo)), function(i) {
+  r_i <- r_wo[[i]]
+  #Convert raster to dataframe
+  df_r <- as.data.frame(r_i, xy = TRUE) %>% na.omit()
+  
+  #Lifeform
+  lf_i <- colnames(df_r)[3]
+  
+  #Change columns name
+  colnames(df_r)[3] <- "Richness"
+  
+  #set braks
+  b <- round(seq(min(df_r$Richness), max(df_r$Richness), length.out = 5), 0)
+  
+  #Get label
+  my_label <- paste0("(", letters[i], ") ", lf_i)
+  
+  g <- ggplot() +
+    geom_sf(data = sa, fill = "grey77", size = 0.1, colour = "white") +
+    geom_sf(data = br, fill = "grey80", size = 0.1, colour = "grey40") +
+    geom_raster(data = df_r, aes(x, y, fill = Richness), alpha = 1) +
+    scale_fill_gradientn(colors = rev(pals::brewer.rdylbu(10)),
+                         name = "Richness", breaks = b) +
+    geom_sf(data = br, fill = NA, size = 0.1, colour = "grey40") +
+    
+    # scale_fill_gradientn(
+    #   colors = rev(c("#9DBF9E", "#FCB97D", "#A84268")),
+    #   na.value = "grey80",
+    #   #limits = c(0, 1),
+    #   #oob = scales::squish,
+    #   name = "Richness") + 
+    geom_hline(yintercept = - 19, linetype = "dashed") +
+    coord_sf(xlim = c(bb_af[1] - 0.5, xmax=bb_af[2] + 0.5),
+             ylim = c(bb_af[3] - 0.5, ymax=bb_af[4] + 0.5),
+             expand = T) +
+    theme(legend.position = c(0.75, 0.21),
+          legend.direction = "vertical",
+          text = element_text(family = "Arial"),
+          legend.title = element_text(size = 11),
+          legend.text = element_text(size = 10),
+          legend.key.size = unit(0.75, 'cm'), #change legend key size
+          legend.key.height = unit(0.87, 'cm'), #change legend key height
+          legend.key.width = unit(1.3, 'cm'),
+          legend.box = "horizontal",
+          legend.background = element_rect(fill = "white", size = 0.5, colour = "black"),
+          panel.background = element_rect(fill = 'aliceblue', colour = NA),
+          panel.border = element_rect(colour = "black", size = 2, fill = NA),
+          #plot.margin = unit(c(0,0,0,0), "cm")
+    ) +
+    annotation_scale(pad_x = unit(2.5, "cm")) +
+    xlab("Longitude") + ylab("Latitude") +
+    metR::scale_x_longitude(ticks = 5) + metR::scale_y_latitude(ticks = 6) +
+    annotate("text", x = -57.8, y=-4, label = my_label, size = unit(5, "pt"),
+             hjust = 0)
+  g
+})
+#Get lifeforms
+# lf_names <- pbsapply(lf_indices, function(x){ x$lifeform})
+names(p_wo) <- names(r_wo)
+# #Get letters to legend 
+# my_legend <- paste0("(", letters[1:6], ") ", lf_names)
+
+#Arrange plot
+pp_wo <- wrap_plots(p_wo) + 
+  plot_layout(ncol = 4, axes = "collect")
+
+#Save
+ggsave("Figures/Richness_with_Occurrences.png",
+       pp_wo, dpi = 600, units = "px", width = 1800,
+       height = 980, scale = 7)
+
 
 ####Predictors####
 r_pred <- rast("Data/Variables/Explanatory_Variables.tiff")
 plot(r_pred)
-#Remove Bio11
+
 
 #Change names
-names(r_pred) <- c("Aridity", "Bio06", "Bio02", "Bio15",
+names(r_pred) <- c("Aridity", "PET", "Bio06", "Bio02", "Bio15",
                    "Mid-domain",
                    "Precipitation stability", "Temperature stability",
                    "Topographic heterogeneity",
@@ -443,7 +751,7 @@ p_pred <- pblapply(1:length(names(r_pred)), function(i) {
     coord_sf(xlim = c(bb_af[1] - 0.5, xmax=bb_af[2] + 0.5),
              ylim = c(bb_af[3] - 0.5, ymax=bb_af[4] + 0.5),
              expand = T) +
-    theme(legend.position = c(0.75, 0.19),
+    theme(legend.position = c(0.79, 0.22),
           legend.direction = "vertical",
           text = element_text(family = "Arial"),
           legend.title = element_text(size = 11),
@@ -467,10 +775,10 @@ p_pred <- pblapply(1:length(names(r_pred)), function(i) {
 #Get variables names
 names(p_pred) <- names(r_pred)
 
-pp_pred2 <- wrap_plots(p_pred) + plot_layout(ncol = 5)
+pp_pred2 <- wrap_plots(p_pred) + plot_layout(ncol = 4)
 ggsave("Figures/Predictors.png",
-       pp_pred2, dpi = 600, units = "px", width = 2500,
-       height = 1200, scale = 7)
+       pp_pred2, dpi = 600, units = "px", width = 1350,
+       height = 1000, scale = 10.25)
 
 # #Get letters to legend 
 # my_legend <- paste0("(", letters[1:6], ") ", lf_names)
@@ -527,11 +835,9 @@ bm <- pblapply(cm_l, function(i){
   
   #Select best model
   bm <- cm_i %>%
-    #filter(Highest_VIF <= 10) %>% #VIF < 10
-    #filter(p_dispersion_ration > 0.05) %>% #Dispersion ratio < 0.05
     #calculate delta AIC
     mutate(dAIC = AIC - min(AIC, na.rm = T), .after = AIC) %>% #Recalculate AIC
-    filter(dAIC == 0) #AIC < 2
+    filter(dAIC == 0)
   #Select columns
   bm <- bm %>% dplyr::select(c(lifeForm, Formula, AIC, dAIC,
                                twologlik = loglik, Moran_I = Moran_I_obs, rmse))
@@ -557,11 +863,16 @@ vars <- lapply(bm$Formula, function(x) all.vars(as.formula(x))) %>% unlist() %>%
   unique()
 #Exclude Richness
 vars <- vars[-1]
+#Order vars
+vars %>% dput()
+vars <- c("Aridity", "PET", "Bio06", "Bio02", "Bio15", "Prec_stab", 
+          "Temp_stab", "Topo_het", "Mid_domain", "Lat_EV", "Long_EV")
 #Get all lifeforms
 lfs <- unique(bm$lifeForm)
 #Exclude others and reoders
 lfs %>% dput()
-lfs <- c("All", "Tree", "Liana", "Shrub", "Subshrub",  "Herb", "Bamboo", "Palm_tree")
+lfs <- c("All", "Tree", "Liana", "Shrub", "Subshrub", "Terrestrial_herb", 
+         "Epiphytic_herb", "Bamboo", "Palm_tree")
 
 lf_l <- pblapply(lfs, function(i){
   lf_i <- i
@@ -595,12 +906,13 @@ bdf <- flextable(df) %>% theme_vanilla() %>%
   set_header_labels(Temp_stab = "Temperature Stability",
                     Prec_stab = "Precipitation Stability",
                     Mid_domain = "Mid-domain",
-                    Topoi_het = "Topographic heterogeneity",
-                    Ev3 = "Spatial (Ev3)",
+                    Topo_het = "Topographic heterogeneity",
+                    Lat_EV = "Longitude",
+                    Long_EV = "Latitude",
                     Moran_I = "Moran Index") %>% 
-  add_header_row(values = c("", "Energy", "Tolerance", "Seasonality",
-                            "Stability", "", "", "", "", "", "", ""),
-                 colwidths = c(1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1)) %>% 
+  add_header_row(values = c("", "Water-energy", "Tolerance", "Seasonality",
+                            "Stability", "", "", "Spatial filters", "", "", "", ""),
+                 colwidths = c(1, 2, 1, 2, 2, 1, 1, 2, 1, 1, 1, 1)) %>% 
   align(align = "center", part = "all") 
 bdf
 #Save as docx
@@ -782,4 +1094,21 @@ mapview(eco_v) + mapview(eco_af, zcol = "ECO_NAME") + mapview(af)
 #Save
 writeVector(eco_v, "Data/Ecoregions_af.gpkg",  overwrite = T)
 
+### Model disgnostic ###
+library(DHARMa)
 
+#Import best models
+m <- list.files("Data/Models/Best_models/", full.names = TRUE)
+m_names <- fs::path_ext_remove(m) %>% basename()
+
+#Read models
+m <- pblapply(m, readRDS)
+
+#Dharma
+sr <- simulateResiduals(m[[6]])
+sr
+plot(sr)
+
+testDispersion(sr)
+a <- performance::check_model(m[[2]])
+a
